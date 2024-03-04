@@ -51,6 +51,22 @@ def create_QPSK_symbols(num_symbols,message):
     """
     return qpsk_symbols
 
+def calculate_SER(transmitted_symbols, received_symbols):
+    num_errors = sum(transmitted_symbol != received_symbol for transmitted_symbol, received_symbol in zip(transmitted_symbols, received_symbols))
+    SER = num_errors / len(transmitted_symbols)
+    return SER
+
+def decode_received_symbols(received_symbols):
+    decoded_bits = []
+    for symbol in received_symbols:
+        decoded_bits.append(int(symbol.real > 0))
+        decoded_bits.append(int(symbol.imag > 0))
+    return decoded_bits
+
+
+
+
+
 # Generate QPSK symbols
 num_symbols = 1000
 qpsk_symbols = create_QPSK_symbols(num_symbols,[0,1])
@@ -72,8 +88,14 @@ for noise_variance in noise_variances:
 print(received_symbols_list)
 # Plotting received symbols for different noise variances
 
+SER_values = []
+for i, received_symbols in enumerate(received_symbols_list):
+    decoded_bits = decode_received_symbols(received_symbols)
+    transmitted_bits = np.tile([0, 1], num_symbols // 2)
+    SER = calculate_SER(transmitted_bits, decoded_bits)
+    SER_values.append(SER)
+    print(f"SER for Noise Variance {noise_variances[i]}: {SER}")
     
-       
 plt.figure(figsize=(10, 8))
 for i in range(len(received_symbols_list)):
     real_part = []
