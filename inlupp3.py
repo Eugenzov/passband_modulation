@@ -1,23 +1,10 @@
 from cmath import sqrt
+from itertools import count
 from numbers import Real
 import matplotlib.pyplot as plt
 import numpy as np
 
 def channel2(transmittedSignal, noisePower):
-    """
-    Adds white and zero-mean circular symmetric complex Gaussian noise
-    to all elements of transmittedSignal.
-
-    Parameters:
-    transmittedSignal : array_like
-        Array containing transmitted signal symbols.
-    noisePower : float
-        Total noise power.
-
-    Returns:
-    noisySignal : array_like
-        Array containing the received signal with added noise.
-    """
     # Calculate the variance of the noise (divided by 2 for real and imaginary parts)
     noiseVar = noisePower / 2.0
     noisy_signal = []
@@ -32,6 +19,15 @@ def channel2(transmittedSignal, noisePower):
     return noisy_signal
 
 # Function to create QPSK symbols from binary message [01]
+def create_BPSK_symbols(message):
+    # Binary message [01]
+    imag = [-1j, 1j]
+    qam_symbols = []
+    for i in range(int(len(message))):
+        index = message[i]
+        qam_symbols.append(imag[index])
+    return qam_symbols
+
 def create_QPSK_symbols(num_symbols,message):
     # Binary message [01]
     imaginary = [1j,-1j]
@@ -40,36 +36,87 @@ def create_QPSK_symbols(num_symbols,message):
     qpsk_symbols = []
     for i in range(num_symbols):
         qpsk_symbols.append((imaginary[message[0]]+real[message[1]])/sqrt(2))
-    # Repeat the message to create symbol vector
     
-    # Map binary symbols to QPSK constellation points
-    """
-    qpsk_constellation = np.array([1 + 1j, -1 + 1j, -1 - 1j, 1 - 1j]) / np.sqrt(2)
-    print(len(qpsk_constellation))
-    qpsk_symbols = qpsk_constellation[symbol_vector]
-    print(len(qpsk_symbols))
-    """
     return qpsk_symbols
 
-def calculate_SER(transmitted_symbols, received_symbols):
-    num_errors = sum(transmitted_symbol != received_symbol for transmitted_symbol, received_symbol in zip(transmitted_symbols, received_symbols))
-    SER = num_errors / len(transmitted_symbols)
-    return SER
+def create_16QAM_symbols(message):
+    # Binary message [01]
+    imaginary = [-1j, -1j/3, 1j, 1j/3]
+    real = [1, 1/3, -1, -1/3]
+    qam_symbols = []
+    for i in range(int(len(message)/4)):
+        index = message[i*4:i*4+4]
+        real_index = int(''.join([str(bit) for bit in index[2:]]), 2)
+        imag_index = int(''.join([str(bit) for bit in index[0:2]]), 2)
+        qam_symbols.append((imaginary[imag_index] + real[real_index]) / sqrt(10))
+    return qam_symbols
 
-def decode_received_symbols(received_symbols):
+def decode_received_symbols(received_symbols,mode="QPSK"):
     decoded_bits = []
-    for symbol in received_symbols:
-        decoded_bits.append(int(symbol.real > 0))
-        decoded_bits.append(int(symbol.imag > 0))
+    if mode == "QPSK":
+        for symbol in received_symbols:
+            decoded_bits.append([int(symbol.imag < 0),int(symbol.real < 0)])
+    elif mode == "BPSK":
+        for symbol in received_symbols:
+            decoded_bits.append([int(symbol.imag > 0)])
+    elif mode == "16QAM":
+        
+        for symbol in received_symbols:
+            cache = []
+
+            if symbol.imag > 0:
+                if symbol.imag > 2/(sqrt(10)*3).real:
+                    cache.append(1)
+                    cache.append(0)
+                else:
+                    cache.append(1)
+                    cache.append(1)
+            else:
+                if symbol.imag < -2/(sqrt(10)*3).real:
+                    cache.append(0)
+                    cache.append(0)
+                else:
+                    cache.append(0)
+                    cache.append(1)
+            if symbol.real > 0:
+                if symbol.real > 2/(sqrt(10)*3).real:
+                    cache.append(0)
+                    cache.append(0)
+                else:
+                    cache.append(0)
+                    cache.append(1)
+            else:
+                if symbol.real < -2/(sqrt(10)*3).real:
+                    cache.append(1)
+                    cache.append(0)
+                else:
+                    cache.append(1)
+                    cache.append(1)
+            decoded_bits.append(cache)            
     return decoded_bits
 
 
 
+def calculate_BER(transmitted_symbols, received_symbols):
+    counter = 0
+    transmitted_symbols = decode_received_symbols(transmitted_symbols)
+    for i in range(len(transmitted_symbols)):
+        for j in range(len(transmitted_symbols[i])):
+            if transmitted_symbols[i][j]==received_symbols[i][j]:
+                counter += 1
+    return 1-counter/(len(transmitted_symbols)*len(transmitted_symbols[0]))
 
+def calculate_SER(transmitted_symbols, received_symbols):
+    counter = 0
+    transmitted_symbols = decode_received_symbols(transmitted_symbols)
+    for i in range(len(transmitted_symbols)):
+        if transmitted_symbols[i]==received_symbols[i]:
+            counter += 1
+    return 1-counter/(len(transmitted_symbols))
 
 # Generate QPSK symbols
-num_symbols = 1000
-qpsk_symbols = create_QPSK_symbols(num_symbols,[0,1])
+num_symbols = 10000
+qpsk_symbols = create_QPSK_symbols(num_symbols,[0,0])
 #print(qpsk_symbols)
 # Different noise variances to test
 noise_variances = [1, 0.1, 0.01]
@@ -85,17 +132,21 @@ for noise_variance in noise_variances:
     
     # Append received symbols to the list
     received_symbols_list.append(noisy_symbols)
-print(received_symbols_list)
-# Plotting received symbols for different noise variances
+#print(decode_received_symbols(received_symbols_list[1]))
 
-SER_values = []
-for i, received_symbols in enumerate(received_symbols_list):
-    decoded_bits = decode_received_symbols(received_symbols)
-    transmitted_bits = np.tile([0, 1], num_symbols // 2)
-    SER = calculate_SER(transmitted_bits, decoded_bits)
-    SER_values.append(SER)
-    print(f"SER for Noise Variance {noise_variances[i]}: {SER}")
-    
+# Plotting received symbols for different noise variances
+print(decode_received_symbols(create_16QAM_symbols([0,1,0,1,1,1,0,0]),mode="16QAM"))
+print(decode_received_symbols(create_BPSK_symbols([0,0,1,1,1]),mode="BPSK"))
+
+
+"""
+for i in range(len(received_symbols_list)):
+    hej = decode_received_symbols(received_symbols_list[i]) 
+    print("Symbol error rate is: "+str(calculate_SER(qpsk_symbols,hej)))
+    print("Bit error rate is: "+str(calculate_BER(qpsk_symbols,hej)))
+"""    
+
+"""
 plt.figure(figsize=(10, 8))
 for i in range(len(received_symbols_list)):
     real_part = []
@@ -112,4 +163,4 @@ plt.legend()
 plt.grid(True)
 
 plt.show()
-
+"""
